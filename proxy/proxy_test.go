@@ -13,9 +13,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// customUpstreamConfig is a helper function that returns an initialized
+// newCustomUpstreamConfig is a helper function that returns an initialized
 // [*proxy.CustomUpstreamConfig].
-func customUpstreamConfig(ups upstream.Upstream, enabled bool) (conf *proxy.CustomUpstreamConfig) {
+func newCustomUpstreamConfig(ups upstream.Upstream, enabled bool) (c *proxy.CustomUpstreamConfig) {
 	return proxy.NewCustomUpstreamConfig(
 		&proxy.UpstreamConfig{Upstreams: []upstream.Upstream{ups}},
 		enabled,
@@ -56,22 +56,26 @@ func TestProxy_Resolve_cache(t *testing.T) {
 	const host = "example.test."
 
 	ups := &dnsproxytest.FakeUpstream{
-		OnExchange: func(req *dns.Msg) (resp *dns.Msg, err error) {
-			resp = (&dns.Msg{}).SetReply(req)
-			resp.Answer = append(resp.Answer, &dns.A{
-				Hdr: dns.RR_Header{
-					Name:   req.Question[0].Name,
-					Rrtype: dns.TypeA,
-					Class:  dns.ClassINET,
-					Ttl:    60,
-				},
-				A: net.IP{192, 0, 2, 0},
-			})
-
-			return resp, nil
-		},
 		OnAddress: func() (addr string) { return "stub" },
 		OnClose:   func() (err error) { return nil },
+	}
+	ups.OnExchange = func(req *dns.Msg) (resp *dns.Msg, err error) {
+		resp = (&dns.Msg{}).SetReply(req)
+		resp.Answer = append(resp.Answer, &dns.A{
+			Hdr: dns.RR_Header{
+				Name:   req.Question[0].Name,
+				Rrtype: dns.TypeA,
+				Class:  dns.ClassINET,
+				Ttl:    60,
+			},
+			A: net.IP{192, 0, 2, 0},
+		})
+
+		return resp, nil
+	}
+
+	upsConf := &proxy.UpstreamConfig{
+		Upstreams: []upstream.Upstream{ups},
 	}
 
 	testCases := []struct {
@@ -87,19 +91,19 @@ func TestProxy_Resolve_cache(t *testing.T) {
 		name:               "global_cache",
 		prxCacheEnabled:    true,
 	}, {
-		customUpstreamConf: customUpstreamConfig(ups, true),
+		customUpstreamConf: newCustomUpstreamConfig(ups, true),
 		wantCachedWithConf: assert.True,
 		wantCachedGlobal:   assert.False,
 		name:               "custom_cache",
 		prxCacheEnabled:    false,
 	}, {
-		customUpstreamConf: customUpstreamConfig(ups, false),
+		customUpstreamConf: newCustomUpstreamConfig(ups, false),
 		wantCachedWithConf: assert.False,
 		wantCachedGlobal:   assert.False,
 		name:               "custom_cache_only_upstreams",
 		prxCacheEnabled:    false,
 	}, {
-		customUpstreamConf: customUpstreamConfig(ups, true),
+		customUpstreamConf: newCustomUpstreamConfig(ups, true),
 		wantCachedWithConf: assert.True,
 		wantCachedGlobal:   assert.False,
 		name:               "two_caches_enabled",
@@ -115,11 +119,8 @@ func TestProxy_Resolve_cache(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			p, err := proxy.New(&proxy.Config{
-				UDPListenAddr: []*net.UDPAddr{net.UDPAddrFromAddrPort(localhostAnyPort)},
-				UpstreamConfig: &proxy.UpstreamConfig{
-					Upstreams: []upstream.Upstream{ups},
-				},
-				CacheSizeBytes: 0,
+				UDPListenAddr:  []*net.UDPAddr{net.UDPAddrFromAddrPort(localhostAnyPort)},
+				UpstreamConfig: upsConf,
 				CacheEnabled:   tc.prxCacheEnabled,
 			})
 			require.NoError(t, err)
