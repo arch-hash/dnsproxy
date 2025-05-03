@@ -30,7 +30,12 @@ There are several options how to install `dnsproxy`.
 
 1. Grab the binary for your device/OS from the [Releases][releases] page.
 2. Use the [official Docker image][docker].
-3. Build it yourself (see the instruction below).
+3. Install via package manager.
+   
+   For Arch Linux:
+   ```bash
+   sudo pacman -S dnsproxy
+5. Build it yourself (see the instruction below).
 
 [releases]: https://github.com/AdguardTeam/dnsproxy/releases
 [docker]: https://hub.docker.com/r/adguard/dnsproxy
